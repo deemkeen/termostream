@@ -1,2 +1,4 @@
 dist/
 termostream
+private.pem
+certificate.pem
