@@ -1,10 +1,12 @@
 # termoStream
 
 termoStream is a command-line tool that allows you to stream your mobile device's camera to your terminal using QR codes, creating a unique ASCII art video stream.
+It can also display the stream in a web browser with the -web flag.
 
 ## Features
 
 - Live camera streaming to terminal
+- Optional web browser viewing with -web flag
 - ASCII art conversion in real-time
 - Switch between front and back cameras
 - Clean and responsive web interface
@@ -36,7 +38,8 @@ sudo cp termostream /usr/local/bin/
 
 1. Run the `termostream` binary in your terminal:
 ```bash
-./termostream
+./termostream        # For terminal output
+./termostream -web   # For web browser output
 ```
 
 2. A QR code will appear in your terminal
@@ -47,6 +50,8 @@ sudo cp termostream /usr/local/bin/
    - Click "Start Video Stream" to begin streaming
    - Use "Switch Camera" to toggle between front/back cameras
    - Click "Stop Video Stream" to end the stream
+
+5. When using -web flag, open the provided view URL in your browser to watch the stream
 
 ## Environment Variables
 
@@ -64,7 +69,8 @@ HOST_ADDR=192.168.1.100 HOST_PORT=3000 ./termostream
 - The stream URL contains a random suffix for basic security
 - Works on any device with a modern browser and camera
 - No need to be on the same Wi-Fi network as long as the device can reach the host IP
-- Video stream is converted to ASCII art using the `chafa` utility
+- Video stream is converted to ASCII art using the `chafa` utility when viewing in terminal
+- Web view shows the original video stream without ASCII conversion
 
 ## Technical Details
 
