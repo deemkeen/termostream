@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"embed"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -20,8 +21,13 @@ import (
 	"github.com/skip2/go-qrcode"
 )
 
-//go:embed templates/ui.html
+//go:embed templates/ui.html templates/stream.html
 var templates embed.FS
+
+var (
+	viewers    = make(map[*websocket.Conn]bool)
+	viewersMux sync.RWMutex
+)
 
 const (
 	letters      = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -108,7 +114,60 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleWebSocketWeb(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Web client connecting from %s", r.RemoteAddr)
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Upgrade error: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	conn.SetReadDeadline(time.Time{})
+	conn.SetWriteDeadline(time.Time{})
+	conn.EnableWriteCompression(false)
+
+	viewersMux.Lock()
+	viewers[conn] = true
+	viewersMux.Unlock()
+	defer func() {
+		viewersMux.Lock()
+		delete(viewers, conn)
+		viewersMux.Unlock()
+	}()
+
+	log.Printf("Web client connected from %s", r.RemoteAddr)
+
+	for {
+		messageType, data, err := conn.ReadMessage()
+		if err != nil {
+			log.Printf("Read error: %v", err)
+			break
+		}
+
+		if messageType != websocket.BinaryMessage {
+			continue
+		}
+
+		viewersMux.RLock()
+		for viewer := range viewers {
+			if viewer != conn {
+				err := viewer.WriteMessage(websocket.BinaryMessage, data)
+				if err != nil {
+					log.Printf("Write error to viewer: %v", err)
+				}
+			}
+		}
+		viewersMux.RUnlock()
+	}
+
+	log.Printf("Web client disconnected from %s", r.RemoteAddr)
+}
+
 func main() {
+	webView := flag.Bool("web", false, "View stream in browser instead of console")
+	flag.Parse()
+
 	src := rand.NewSource(time.Now().UnixNano())
 	rand.New(src)
 
@@ -129,7 +188,23 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/"+randomSuffix+"/ws", handleWebSocket)
+	http.HandleFunc("/"+randomSuffix+"/view", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		template, err := templates.ReadFile("templates/stream.html")
+		if err != nil {
+			http.Error(w, "Failed to load template", http.StatusInternalServerError)
+			return
+		}
+		w.Write(template)
+	})
+
+	http.HandleFunc("/"+randomSuffix+"/ws", func(w http.ResponseWriter, r *http.Request) {
+		if *webView {
+			handleWebSocketWeb(w, r)
+		} else {
+			handleWebSocket(w, r)
+		}
+	})
 
 	var localIP string
 	if envHost := os.Getenv("HOST_ADDR"); envHost != "" {
@@ -164,8 +239,9 @@ func main() {
 		port = ":" + envPort
 	}
 
-	url := fmt.Sprintf("https://%s%s/%s", localIP, port, randomSuffix)
-	qr, err := qrcode.New(url, qrcode.Low)
+	captureUrl := fmt.Sprintf("https://%s%s/%s", localIP, port, randomSuffix)
+	viewUrl := captureUrl + "/view"
+	qr, err := qrcode.New(captureUrl, qrcode.Low)
 	if err != nil {
 		fmt.Printf("Failed to generate QR code: %v\n", err)
 		os.Exit(1)
@@ -173,6 +249,11 @@ func main() {
 
 	clearScreen()
 	fmt.Println(qr.ToString(false))
+	fmt.Printf("\nCapture URL (scan with phone):\n%s\n", captureUrl)
+
+	if *webView {
+		fmt.Printf("\nView the stream in your browser at:\n%s\n", viewUrl)
+	}
 
 	if err := http.ListenAndServeTLS(port, "certificate.pem", "private.pem", nil); err != nil {
 		fmt.Printf("Server error: %v\n", err)

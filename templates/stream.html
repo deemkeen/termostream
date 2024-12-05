@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+    <head>
+        <style>
+            body {
+                margin: 0;
+                background: #000;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+            }
+            img {
+                max-width: 100%;
+                max-height: 100vh;
+            }
+        </style>
+    </head>
+    <body>
+        <img id="output" />
+        <script>
+            console.log("Starting viewer...");
+            const wsPath = window.location.pathname.replace("/view", "/ws");
+            const wsUrl =
+                (window.location.protocol === "https:" ? "wss://" : "ws://") +
+                window.location.host +
+                wsPath;
+            console.log("Connecting to:", wsUrl);
+            const ws = new WebSocket(wsUrl);
+            ws.binaryType = "blob";
+            const img = document.getElementById("output");
+
+            ws.onmessage = function (event) {
+                if (event.data instanceof Blob) {
+                    const url = URL.createObjectURL(event.data);
+                    img.src = url;
+                    img.onload = () => {
+                        URL.revokeObjectURL(url);
+                    };
+                } else {
+                    console.error("Received non-blob message:", event.data);
+                }
+            };
+
+            ws.onopen = () => console.log("WebSocket connected");
+            ws.onerror = (error) => console.error("WebSocket error:", error);
+            ws.onclose = () => console.log("WebSocket closed");
+        </script>
+    </body>
+</html>
